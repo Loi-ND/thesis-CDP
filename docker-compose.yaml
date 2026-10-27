@@ -1,0 +1,35 @@
+services:
+  kafdrop:
+    image: obsidiandynamics/kafdrop:4.2.0
+    container_name: kafdrop
+    ports:
+    - 9000:9000
+    deploy:
+      resources:
+        limits:
+          cpus: 1
+          memory: 0.5G
+    environment:
+        KAFKA_BROKERCONNECT: "kafka-server:9091"
+
+  kafka-server:
+    hostname: kafka-server
+    container_name: kafka-server
+    image: loind31/kafka:v1
+    volumes:
+      - ./infra/kafka/config/cluster.id:/cluster.id
+      - ./infra/kafka/config/standalone:/workspace/kafka/config
+      - ./infra/kafka/config/server-uuid:/workspace/kafka/server-uuid
+      - ./infra/kafka/config/standalone-entrypoint.sh:/entrypoint.sh
+      - kafka-data:/workspace/kafka/logs
+    deploy:
+      resources:
+        limits:
+          cpus: 2
+          memory: 2G
+    ports:
+      - 9091:9091
+    command: ["/bin/bash", "/entrypoint.sh"]
+
+volumes:
+  kafka-data:
