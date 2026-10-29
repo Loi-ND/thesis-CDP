@@ -15,8 +15,10 @@ services:
   kafka-server:
     hostname: kafka-server
     container_name: kafka-server
-    image: loind31/kafka:v1
+    image: loind31/kafka:v2
     volumes:
+      - ./data:/workspace/kafka/data
+      - ./src/python/kafka:/workspace/kafka/src
       - ./infra/kafka/config/cluster.id:/cluster.id
       - ./infra/kafka/config/standalone:/workspace/kafka/config
       - ./infra/kafka/config/server-uuid:/workspace/kafka/server-uuid
@@ -30,6 +32,26 @@ services:
     ports:
       - 9091:9091
     command: ["/bin/bash", "/entrypoint.sh"]
+  
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    hostname: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: project
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d project"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   kafka-data:
+  pgdata:
