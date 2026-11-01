@@ -1,4 +1,83 @@
 services:
+  spark-master:
+    image: loind31/spark:v0
+    container_name: spark-master
+    hostname: spark-master
+    command: >
+      bash -c "$$SPARK_HOME/sbin/start-master.sh &&
+      tail -f $$SPARK_HOME/logs/*"
+    ports:
+      - "7077:7077"
+      - "8079:8080"
+    cpus: 1
+    mem_limit: 2g
+
+  spark-worker-1:
+    image: loind31/spark:v0
+    container_name: spark-worker-1
+    hostname: spark-worker-1
+    command: >
+      bash -c "$$SPARK_HOME/sbin/start-worker.sh
+      spark://spark-master:7077 &&
+      tail -f $$SPARK_HOME/logs/*"
+    depends_on:
+      - spark-master
+    environment:
+      SPARK_WORKER_CORES: 4
+      SPARK_WORKER_MEMORY: 4g
+    cpus: 4
+    mem_limit: 5g
+    ports:
+      - "8081:8081"
+
+  spark-worker-2:
+    image: loind31/spark:v0
+    container_name: spark-worker-2
+    hostname: spark-worker-2
+    command: >
+      bash -c "$$SPARK_HOME/sbin/start-worker.sh
+      spark://spark-master:7077 &&
+      tail -f $$SPARK_HOME/logs/*"
+    depends_on:
+      - spark-master
+    environment:
+      SPARK_WORKER_CORES: 4
+      SPARK_WORKER_MEMORY: 4g
+    cpus: 4
+    mem_limit: 5g
+    ports:
+      - "8082:8081"
+  
+  jupyter:
+    image: loind31/jupyter-spark:v0
+    container_name: jupyter
+    hostname: jupyter
+
+    cpus: 2
+    mem_limit: 3g
+
+    ports:
+      - "8888:8888"
+
+    environment:
+      JUPYTER_TOKEN: "spark123"
+
+      PYSPARK_PYTHON: python3
+      PYSPARK_DRIVER_PYTHON: python3
+
+    command:
+      - bash
+      - -lc
+      - |
+        exec jupyter lab \
+          --ip=0.0.0.0 \
+          --port=8888 \
+          --no-browser \
+          --allow-root \
+          --ServerApp.token=spark123
+
+    volumes:
+      - ./notebooks:/workspace/notebooks
   kafdrop:
     image: obsidiandynamics/kafdrop:4.2.0
     container_name: kafdrop
@@ -51,7 +130,107 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  airflow:
+    image: loind31/airflow:v1
+    container_name: airflow
+    hostname: airflow
+    ports:
+      - 8080:8080
+    cpus: 1
+    mem_limit: 2g
+    command: ["/bin/bash", "/workspace/airflow-entrypoint.sh"]
+    volumes:
+      - ./infra/airflow/home:/workspace/airflow
+      - ./src/dags:/workspace/dags
+      - ./src/ingestion:/workspace/ingestion
+      - ./src/transform:/workspace/transform
+      - ./src/serving:/workspace/serving
+      - ./infra/airflow/entrypoint.sh:/workspace/airflow-entrypoint.sh
+  minio1:
+    container_name: minio1
+    hostname: minio1
+    image: loind31/minio:v0
+    cpus: 1
+    mem_limit: 1g
+    volumes:
+      - minio1:/data
+    command: /workspace/minio server http://minio{1...2}/data/{1...2} --console-address ":9001"
+  
+  minio2:
+    container_name: minio2
+    hostname: minio2
+    image: loind31/minio:v0
+    cpus: 1
+    mem_limit: 1g
+    volumes:
+      - minio2:/data
+    command: /workspace/minio server http://minio{1...2}/data/{1...2} --console-address ":9001"
+
+  nginx:
+    image: nginx:1.27-alpine
+    hostname: nginx
+    volumes:
+      - ./infra/minio/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "9001:9001"
+    cpus: 1
+    mem_limit: 1g
+    depends_on:
+      - minio1
+      - minio2
+  
+  starrocks-fe:
+    image: loind31/starrocks:v0
+    container_name: fe
+    hostname: fe
+    ports:
+      - 8030:8030
+      - 9030:9030
+    environment:
+      - BE_NODES=be-1,be-2
+    cpus: 1
+    mem_limit: 2g
+    volumes:
+      - ./infra/starrocks/config/fe/fe.conf:/workspace/starrocks/fe/conf/fe.conf
+      - ./infra/starrocks/scripts/fe-entrypoint.sh:/workspace/starrocks/fe/fe-entrypoint.sh
+      - metadata:/workspace/starrocks/fe/metadata
+    command: ["/bin/bash", "/workspace/starrocks/fe/fe-entrypoint.sh"]
+  
+  starrocks-be-1:
+    image: loind31/starrocks:v0
+    container_name: be-1
+    hostname: be-1
+    ports:
+      - 8040:8040
+      - 9050:9050
+    cpus: 1
+    mem_limit: 1g
+    volumes:
+      - ./infra/starrocks/config/be/be.conf:/workspace/starrocks/be/conf/be.conf
+      - ./infra/starrocks/scripts/be-entrypoint.sh:/workspace/starrocks/be/be-entrypoint.sh
+      - be1-data:/workspace/starrocks/be/data
+    command: ["/bin/bash", "/workspace/starrocks/be/be-entrypoint.sh"]
+  
+  starrocks-be-2:
+    image: loind31/starrocks:v0
+    container_name: be-2
+    hostname: be-2
+    ports:
+      - 8041:8040
+      - 9051:9050
+    cpus: 1
+    mem_limit: 1g
+    volumes:
+      - ./infra/starrocks/config/be/be.conf:/workspace/starrocks/be/conf/be.conf
+      - ./infra/starrocks/scripts/be-entrypoint.sh:/workspace/starrocks/be/be-entrypoint.sh
+      - be2-data:/workspace/starrocks/be/data
+    command: ["/bin/bash", "/workspace/starrocks/be/be-entrypoint.sh"]
 
 volumes:
   kafka-data:
   pgdata:
+  minio1:
+  minio2:
+  be1-data:
+  be2-data:
+  metadata:
